@@ -81,3 +81,39 @@ async def submit_feedback(db: aiosqlite.Connection, token: str, status: str, fee
 async def get_review(db: aiosqlite.Connection, review_id: int) -> dict | None:
     rows = await db.execute_fetchall("SELECT * FROM reviews WHERE id = ?", (review_id,))
     return _row(rows[0]) if rows else None
+
+
+async def get_stats(db: aiosqlite.Connection) -> dict:
+    rows = await db.execute_fetchall("SELECT status, COUNT(*) as cnt FROM reviews GROUP BY status")
+    counts = {r["status"]: r["cnt"] for r in rows}
+    total = sum(counts.values())
+    approved = counts.get("approved", 0)
+    rejected = counts.get("rejected", 0)
+    changes = counts.get("changes_requested", 0)
+    pending = counts.get("pending", 0)
+    decided = approved + rejected + changes
+    approval_rate = round(approved / decided * 100, 1) if decided else 0.0
+
+    # Average turnaround for decided reviews (hours)
+    decided_rows = await db.execute_fetchall(
+        "SELECT created_at, updated_at FROM reviews WHERE status != 'pending'"
+    )
+    turnarounds = []
+    for r in decided_rows:
+        try:
+            created = datetime.fromisoformat(r["created_at"])
+            updated = datetime.fromisoformat(r["updated_at"])
+            turnarounds.append((updated - created).total_seconds() / 3600)
+        except Exception:
+            pass
+    avg_turnaround_hours = round(sum(turnarounds) / len(turnarounds), 1) if turnarounds else None
+
+    return {
+        "total": total,
+        "pending": pending,
+        "approved": approved,
+        "rejected": rejected,
+        "changes_requested": changes,
+        "approval_rate_pct": approval_rate,
+        "avg_turnaround_hours": avg_turnaround_hours,
+    }
