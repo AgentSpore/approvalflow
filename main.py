@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 
 from models import ReviewCreate, ReviewResponse, FeedbackSubmit
-from engine import init_db, create_review, list_reviews, get_review, get_review_by_token, submit_feedback
+from engine import init_db, create_review, list_reviews, get_review, get_review_by_token, submit_feedback, get_stats
 
 DB_PATH = "approvalflow.db"
 
@@ -25,7 +25,7 @@ app = FastAPI(
         "Client approves, rejects, or requests changes — all in one place. "
         "No more lost email threads or Slack back-and-forth."
     ),
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -81,3 +81,12 @@ async def client_feedback(token: str, body: FeedbackSubmit):
     if not r:
         raise HTTPException(404, "Review link not found")
     return r
+
+
+@app.get("/stats")
+async def stats():
+    """
+    Agency dashboard stats: total reviews, pending count,
+    approval rate (%), average client turnaround time (hours).
+    """
+    return await get_stats(app.state.db)
