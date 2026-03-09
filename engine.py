@@ -25,6 +25,18 @@ async def init_db(path: str) -> aiosqlite.Connection:
     db = await aiosqlite.connect(path)
     db.row_factory = aiosqlite.Row
     await db.executescript(SQL_TABLES)
+    # Migrate: add reminder tracking columns if not present
+    for col_sql in [
+        "ALTER TABLE reviews ADD COLUMN remind_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE reviews ADD COLUMN last_reminded_at TEXT",
+        "ALTER TABLE reviews ADD COLUMN requester_email TEXT",
+        "ALTER TABLE reviews ADD COLUMN deadline TEXT",
+        "ALTER TABLE reviews ADD COLUMN asset_url TEXT",
+    ]:
+        try:
+            await db.execute(col_sql)
+        except Exception:
+            pass  # column already exists
     await db.commit()
     return db
 
@@ -176,3 +188,32 @@ async def export_reviews_csv(db: aiosqlite.Connection, status: str | None = None
             r["created_at"], r.get("updated_at") or "",
         ])
     return buf.getvalue()
+
+
+async def send_reminder(db: aiosqlite.Connection, review_id: int) -> dict | None:
+    """
+    Mock-send a reminder email to the client for a pending/overdue review.
+    Increments remind_count and updates last_reminded_at.
+    In production: wire to SendGrid/Resend with the review URL containing the token.
+    """
+    rows = await db.execute_fetchall("SELECT * FROM reviews WHERE id = ?", (review_id,))
+    if not rows:
+        return None
+    review = rows[0]
+    if review["status"] not in ("pending",):
+        # Only remind on pending reviews
+        return _row(review)
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    # Mock: log reminder; in production send email here
+    # e.g. send_email(to=review["client_email"], subject=f"Reminder: {review['title']} awaiting approval",
+    #                 body=f"Please review: https://app.approvalflow.io/review/{review['token']}")
+    await db.execute(
+        """UPDATE reviews
+           SET remind_count = COALESCE(remind_count, 0) + 1, last_reminded_at = ?, updated_at = ?
+           WHERE id = ?""",
+        (now, now, review_id),
+    )
+    await db.commit()
+    rows2 = await db.execute_fetchall("SELECT * FROM reviews WHERE id = ?", (review_id,))
+    return _row(rows2[0]) if rows2 else None
