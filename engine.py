@@ -139,3 +139,13 @@ async def update_review(db: aiosqlite.Connection, review_id: int, updates: dict)
     updated = await db.execute_fetchall("SELECT * FROM reviews WHERE id = ?", (review_id,))
     return _row(updated[0]) if updated else None
 
+
+
+async def list_overdue_reviews(db: aiosqlite.Connection) -> list[dict]:
+    """Return pending reviews whose deadline has passed (overdue for client response)."""
+    today = datetime.utcnow().date().isoformat()
+    rows = await db.execute_fetchall(
+        "SELECT * FROM reviews WHERE status = 'pending' AND deadline IS NOT NULL AND deadline < ? ORDER BY deadline ASC",
+        (today,),
+    )
+    return [_row(r) for r in rows]
