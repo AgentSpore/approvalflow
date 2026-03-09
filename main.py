@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from models import ReviewCreate, ReviewResponse, FeedbackSubmit
-from engine import init_db, create_review, list_reviews, get_review, get_review_by_token, submit_feedback, get_stats, update_review, list_overdue_reviews
+from engine import init_db, create_review, list_reviews, get_review, get_review_by_token, submit_feedback, get_stats, update_review, list_overdue_reviews, export_reviews_csv
 
 DB_PATH = "approvalflow.db"
 
@@ -33,7 +33,7 @@ app = FastAPI(
         "Create a review request, share a unique link with the client. "
         "Client approves, rejects, or requests changes — all in one place."
     ),
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -45,6 +45,23 @@ async def create(body: ReviewCreate):
 
 
 
+
+
+
+@app.get("/reviews/export/csv")
+async def export_reviews(
+    status: str | None = Query(None, description="Filter: pending | approved | rejected | changes_requested"),
+):
+    """
+    Export all reviews as CSV for agency reporting.
+    Columns: id, title, requester, client, status, deadline, feedback, asset_url, created_at.
+    """
+    from fastapi.responses import Response
+    csv_text = await export_reviews_csv(app.state.db, status)
+    return Response(
+        content=csv_text, media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=reviews.csv"},
+    )
 
 @app.get("/reviews/overdue", response_model=list[ReviewResponse])
 async def overdue_reviews():
