@@ -117,3 +117,25 @@ async def get_stats(db: aiosqlite.Connection) -> dict:
         "approval_rate_pct": approval_rate,
         "avg_turnaround_hours": avg_turnaround_hours,
     }
+
+async def update_review(db: aiosqlite.Connection, review_id: int, updates: dict) -> dict | None:
+    """Update review title/description/deadline if still pending."""
+    rows = await db.execute_fetchall("SELECT * FROM reviews WHERE id = ?", (review_id,))
+    if not rows:
+        return None
+    r = rows[0]
+    if r["status"] \!= "pending":
+        raise ValueError("Cannot edit a review that has already been decided")
+    allowed = {"title", "description", "deadline", "asset_url"}
+    fields = {k: v for k, v in updates.items() if k in allowed and v is not None}
+    if not fields:
+        return _row(r)
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    await db.execute(
+        f"UPDATE reviews SET {set_clause} WHERE id = ?",
+        list(fields.values()) + [review_id],
+    )
+    await db.commit()
+    updated = await db.execute_fetchall("SELECT * FROM reviews WHERE id = ?", (review_id,))
+    return _row(updated[0]) if updated else None
+
