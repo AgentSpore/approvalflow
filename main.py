@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from models import ReviewCreate, ReviewResponse, FeedbackSubmit
-from engine import init_db, create_review, list_reviews, get_review, get_review_by_token, submit_feedback, get_stats, update_review
+from engine import init_db, create_review, list_reviews, get_review, get_review_by_token, submit_feedback, get_stats, update_review, list_overdue_reviews
 
 DB_PATH = "approvalflow.db"
 
@@ -33,7 +33,7 @@ app = FastAPI(
         "Create a review request, share a unique link with the client. "
         "Client approves, rejects, or requests changes — all in one place."
     ),
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -43,6 +43,16 @@ async def create(body: ReviewCreate):
     """Create a new review request with a unique client token."""
     return await create_review(app.state.db, body.model_dump())
 
+
+
+
+@app.get("/reviews/overdue", response_model=list[ReviewResponse])
+async def overdue_reviews():
+    """
+    List pending reviews whose deadline has already passed.
+    Use this to trigger follow-up emails or escalation workflows.
+    """
+    return await list_overdue_reviews(app.state.db)
 
 @app.get("/reviews", response_model=list[ReviewResponse])
 async def index(
