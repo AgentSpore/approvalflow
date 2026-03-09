@@ -149,3 +149,30 @@ async def list_overdue_reviews(db: aiosqlite.Connection) -> list[dict]:
         (today,),
     )
     return [_row(r) for r in rows]
+
+
+async def export_reviews_csv(db: aiosqlite.Connection, status: str | None = None) -> str:
+    """Export reviews to CSV. Optionally filter by status."""
+    import csv, io
+    q = "SELECT * FROM reviews ORDER BY created_at DESC"
+    params: list = []
+    if status:
+        q = "SELECT * FROM reviews WHERE status = ? ORDER BY created_at DESC"
+        params = [status]
+    rows = await db.execute_fetchall(q, params)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "id", "title", "description", "requester_email", "client_email",
+        "status", "deadline", "feedback", "asset_url", "token", "created_at", "updated_at"
+    ])
+    for r in rows:
+        writer.writerow([
+            r["id"], r["title"], r["description"] or "",
+            r["requester_email"] or "", r["client_email"] or "",
+            r["status"], r["deadline"] or "", r["feedback"] or "",
+            r["asset_url"] or "", r["token"] or "",
+            r["created_at"], r.get("updated_at") or "",
+        ])
+    return buf.getvalue()
